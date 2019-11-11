@@ -1,0 +1,41 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "msvc build",
+      "type": "shell",
+      "command": "cl.exe",
+      "args": ["/EHsc", "/Zi", "/Fe:", "helloengine.exe",
+         "helloengine.cpp", 
+         "board.cpp",
+         "engine.cpp",
+         "log.cpp"],
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "presentation": {
+        "reveal": "always"
+      },
+      "problemMatcher": "$msCompile"
+    },
+    {
+      "label": "msvc build opt O2",
+      "type": "shell",
+      "command": "cl.exe",
+      "args": ["/O2","/EHsc", "/Zi", "/Fe:", "helloengine.exe",
+         "helloengine.cpp", 
+         "board.cpp",
+         "engine.cpp",
+         "log.cpp"],
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "presentation": {
+        "reveal": "always"
+      },
+      "problemMatcher": "$msCompile"
+    }
+  ]
+}

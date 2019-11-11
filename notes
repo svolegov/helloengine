@@ -1,0 +1,49 @@
+Performance of:
+========
+1) allnodes:
+depth 4 (e2e4 d7d5): 
+200K nodes, 752ms
+
+depth 5:
+3.2M nodes, 12100ms
+
+depth 6:
+38M+ nodes, 160+sec, 10GB+ memory
+
+260K nodes per sec
+
+========
+2) alphabeta:
+depth 4 (e2e4 d7d5): 
+20K nodes, 40ms
+
+depth 5:
+246K nodes, 640ms
+
+depth 6:
+1.8M nodes, 4972ms, 630M memory
+350K nodes per second
+
+========
+3) alphabeta+move-best:
+depth 4 (e2e4 d7d5): 
+16K nodes, 80ms
+
+depth 5:
+110K nodes, 300ms
+
+depth 6:
+1.01M nodes, 2550ms, 350M memory
+380K nodes per second
+
+========
+4) alphabeta+move-best+quiescence-search(depth 2) search:
+depth 4 (e2e4 d7d5): 
+24K nodes, 65ms
+
+depth 5:
+230K nodes, 590ms
+
+depth 6:
+1.04M nodes, 2780ms, 367M memory
+360K nodes per second
