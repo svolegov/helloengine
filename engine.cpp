@@ -4,7 +4,7 @@
 #include <unordered_set>
 #include <sstream>
 
-#define SORT_MOVES 0
+#define SORT_MOVES 1
 
 namespace chesseng {
 namespace {
@@ -29,7 +29,7 @@ constexpr int16_t CHECK_PENALTY = -100;
 constexpr int16_t DISTANT_CHECKMATE_DECAY = -5;
 
 constexpr int16_t STALEMATE_SCORE = -300;
-constexpr int16_t ATFER_CHECKMATE_SCORE = 10000;
+constexpr int16_t AFTER_CHECKMATE_SCORE = 10000;
 constexpr int8_t EXACT_EVAL_DEPTH = 100;
 
 struct HeuristicsContext {
@@ -428,7 +428,7 @@ EvalRecord Engine::evaluateBoard(const Board& board) {
       // king is attacked on opponents move, after-checkmate
       // remove pseudo-legal moves
       record.moves.clear();
-      setExactScore(record, ATFER_CHECKMATE_SCORE*movingSideSign);
+      setExactScore(record, AFTER_CHECKMATE_SCORE*movingSideSign);
       return record;
     }
 
@@ -476,40 +476,60 @@ inline void swapMoves(std::vector<Move>& moves, size_t from, size_t to) {
 #if SORT_MOVES == 1
 struct MoveScore{
   MoveScore(){}
-  MoveScore(Move move):move(move) {}
-  void setScore(int16_t score) {
-    this->score = score;
-    scoreKnown=true;
+  MoveScore(Move move, Side movingSide):move(move),movingSide(movingSide) {}
+  void setRecord(EvalRecord* record) {
+    this->record = record;
   }
   
   Move move;
-  int16_t score;
-  bool scoreKnown{false};
+  Side movingSide;
+  EvalRecord* record{nullptr};
 
-  static bool scoreLess(const MoveScore& lhs, const MoveScore& rhs) {
-    if(lhs.scoreKnown && rhs.scoreKnown){
-      return lhs.score<rhs.score;
+  static bool bestScoreFirst(const MoveScore& lhs, const MoveScore& rhs) {
+    if((lhs.record==nullptr) != (rhs.record==nullptr)){
+      return lhs.record!=nullptr;
     }
-    if(lhs.scoreKnown) {
-      return true;
+    if((lhs.record==nullptr)&&(rhs.record==nullptr)) {
+      int16_t ltypeScore = lhs.move.getMoveType()==MoveType::CAPTURE ? 1 : 0;
+      int16_t rtypeScore = rhs.move.getMoveType()==MoveType::CAPTURE ? 1 : 0;
+      if(ltypeScore!=rtypeScore) {
+        return ltypeScore>rtypeScore;
+      }
+      return lhs.move.data<rhs.move.data;
     }
-    return false;
-  }
-  static bool scoreMore(const MoveScore& lhs, const MoveScore& rhs) {
-    if(lhs.scoreKnown && rhs.scoreKnown){
-      return lhs.score>rhs.score;
-    }
-    if(lhs.scoreKnown) {
-      return true;
-    }
-    return false;
-  }
 
+    // both moves have record
+    if(lhs.record->evalStatus!=rhs.record->evalStatus) {
+      return lhs.record->evalStatus==EvalStatus::DONE_COMPLETE;
+    }
+
+    int16_t lscore = lhs.record->evalStatus == EvalStatus::DONE_PARTIAL ? (lhs.movingSide == Side::WHITE ? lhs.record->minWhite : lhs.record->maxBlack) : lhs.record->score;
+    int16_t rscore = rhs.record->evalStatus == EvalStatus::DONE_PARTIAL ? (rhs.movingSide == Side::WHITE ? rhs.record->minWhite : rhs.record->maxBlack) : rhs.record->score;
+
+    if(lscore==rscore) {
+      int16_t ltypeScore = lhs.move.getMoveType()==MoveType::CAPTURE ? 1 : 0;
+      int16_t rtypeScore = rhs.move.getMoveType()==MoveType::CAPTURE ? 1 : 0;
+      if(ltypeScore!=rtypeScore) {
+        return ltypeScore>rtypeScore;
+      }
+      lscore = lhs.record->score;
+      rscore = rhs.record->score;
+    }
+
+    // record scores are different
+    if(lscore!=rscore) {
+      return (lhs.movingSide==Side::WHITE) ? lscore>rscore : lscore<rscore;
+    }
+
+    // record scores are same
+    return lhs.move.data<rhs.move.data;
+  }
+  
 };
 
-void sortMoveScores(std::vector<MoveScore>& moveScores, std::vector<Move>& moves, size_t sortEndIndex, bool bestMoveIsSmallestScore) {
-  std::sort(moveScores.begin(),moveScores.begin()+sortEndIndex, bestMoveIsSmallestScore ? &MoveScore::scoreLess : &MoveScore::scoreMore);
-  for(int i=0;i<moveScores.size();i++) {
+void sortMoveScores(std::vector<MoveScore>& moveScores, std::vector<Move>& moves, size_t sortBeginIndex, size_t sortEndIndex) {
+  std::sort(moveScores.begin()+sortBeginIndex,moveScores.begin()+sortEndIndex, &MoveScore::bestScoreFirst);
+  for(int i=sortBeginIndex;i<sortEndIndex;i++) {
     moves[i] = moveScores[i].move;
   }
 }
@@ -523,7 +543,7 @@ enum class SearchMode:uint8_t{
 };
 
 EvalResult Engine::evaluate(const Board& board, EvalContext& context, int16_t toDepth, int16_t minWhite, int16_t maxBlack, int16_t toQsDepth, bool fromQuietMove) {
-  auto& it = evals.find(board);
+  auto it = evals.find(board);
   EvalRecord* record;
   
   // Get eval record or create new record and run heuristics
@@ -591,7 +611,7 @@ EvalResult Engine::evaluate(const Board& board, EvalContext& context, int16_t to
   #if SORT_MOVES == 1
   std::vector<MoveScore> moveScores(record->moves.size());
   for(int moveIndex = 0;moveIndex<record->moves.size();moveIndex++) {
-    moveScores[moveIndex] = MoveScore(record->moves[moveIndex]);
+    moveScores[moveIndex] = MoveScore(record->moves[moveIndex], board.getMovingSide());
   }
   #endif
 
@@ -618,7 +638,7 @@ EvalResult Engine::evaluate(const Board& board, EvalContext& context, int16_t to
     }
 
     #if SORT_MOVES == 1
-    moveScores[moveIndex].setScore(nextEvalResult.record->score);
+    moveScores[moveIndex].setRecord(nextEvalResult.record);
     #endif
 
     if((board.getMovingSide() == Side::WHITE && newScore < nextEvalResult.score)
@@ -636,11 +656,10 @@ EvalResult Engine::evaluate(const Board& board, EvalContext& context, int16_t to
         record->evalDepth = toDepth;
         record->qsEvalDepth = toQsDepth;
         record->bestMove=move;
-        swapMoves(record->moves, 0, moveIndex);
         #if SORT_MOVES == 1
-        if(moveIndex>1){
-          sortMoveScores(moveScores, record->moves, moveIndex, board.getMovingSide()==Side::BLACK);
-        }
+        sortMoveScores(moveScores, record->moves, 1, moveIndex+1);
+        #else 
+        swapMoves(record->moves, 0, moveIndex);
         #endif
         return EvalResult(record, EvalResultCode::SUCCESS, maxBlack);
       }
@@ -655,11 +674,10 @@ EvalResult Engine::evaluate(const Board& board, EvalContext& context, int16_t to
         record->evalDepth = toDepth;
         record->qsEvalDepth = toQsDepth;
         record->bestMove=move;
-        swapMoves(record->moves, 0, moveIndex);
         #if SORT_MOVES == 1
-        if(moveIndex>1){
-          sortMoveScores(moveScores, record->moves, moveIndex, board.getMovingSide()==Side::BLACK);
-        }
+        sortMoveScores(moveScores, record->moves, 1, moveIndex + 1);
+        #else
+        swapMoves(record->moves, 0, moveIndex);
         #endif
         return EvalResult(record, EvalResultCode::SUCCESS, minWhite);
       }
@@ -678,12 +696,13 @@ EvalResult Engine::evaluate(const Board& board, EvalContext& context, int16_t to
   record->evalDepth = toDepth;
   record->qsEvalDepth = toQsDepth;
   record->bestMove=bestMove;
-  swapMoves(record->moves, 0, bestMoveIndex);
   #if SORT_MOVES == 1
-  sortMoveScores(moveScores, record->moves, record->moves.size(), board.getMovingSide()==Side::BLACK);
+  sortMoveScores(moveScores, record->moves, 0, record->moves.size());
+  #else
+  swapMoves(record->moves, 0, bestMoveIndex);
   #endif
   
-  if(std::abs(record->score)>ATFER_CHECKMATE_SCORE/2) {
+  if(std::abs(record->score)>AFTER_CHECKMATE_SCORE/2) {
     // adjust score for mate distance
     record->score += (record->score>0) ? DISTANT_CHECKMATE_DECAY : -DISTANT_CHECKMATE_DECAY;
   }
@@ -692,7 +711,7 @@ EvalResult Engine::evaluate(const Board& board, EvalContext& context, int16_t to
 }
 
 EvalRecord* Engine::findRecord(const Board& board) {
-  auto& it = evals.find(board);
+  auto it = evals.find(board);
   if(it != evals.end()) {
     return &(it->second);
   }
@@ -798,7 +817,7 @@ int32_t EvalContext::getMsSinceStartTime(){
 
 void EvalContext::nodesEvaluatedCallback() {
   auto now = std::chrono::steady_clock::now();
-  if((now - lastReportTime) > std::chrono::milliseconds(500)) {
+  if((now - lastReportTime) > std::chrono::milliseconds(1000)) {
     lastReportTime = now;
     std::stringstream ss;
     ss << getMsSinceStartTime() << "ms evaluated nodes: " << nodesEvaluated;

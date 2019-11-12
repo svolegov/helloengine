@@ -71,7 +71,7 @@ struct Engine {
   EvalResult evaluate(const Board& board, EvalContext& evalContext, int16_t toDepth, int16_t minWhite, int16_t maxBlack, int16_t toQsDepth, bool fromQuietMove);
   EvalRecord* findRecord(const Board& board);
   Move findBestMove(const Board& board, int16_t toDepth, int16_t toQsDepth=2, int16_t allowedTimeMs=0);
-  std::vector<Move> Engine::getBestMoveSequence(const Board& board);
+  std::vector<Move> getBestMoveSequence(const Board& board);
 
   private:
   std::unordered_map<Board, EvalRecord, Hasher<Board>> evals;
